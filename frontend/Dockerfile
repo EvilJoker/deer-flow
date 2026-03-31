@@ -30,9 +30,12 @@ EXPOSE 3000
 
 # ── Builder: install + compile Next.js ───────────────────────────────────────
 FROM base AS builder
+ARG SKIP_ENV_VALIDATION=1
+ARG NEXT_PUBLIC_BACKEND_BASE_URL=/
+ARG NEXT_PUBLIC_LANGGRAPH_BASE_URL=/api/langgraph
 RUN cd /app/frontend && pnpm install --frozen-lockfile
 # Skip env validation — runtime vars are injected by nginx/container
-RUN cd /app/frontend && SKIP_ENV_VALIDATION=1 pnpm build
+RUN cd /app/frontend && SKIP_ENV_VALIDATION=${SKIP_ENV_VALIDATION} NEXT_PUBLIC_BACKEND_BASE_URL=${NEXT_PUBLIC_BACKEND_BASE_URL} NEXT_PUBLIC_LANGGRAPH_BASE_URL=${NEXT_PUBLIC_LANGGRAPH_BASE_URL} pnpm build
 
 # ── Prod: minimal runtime with pre-built output ───────────────────────────────
 FROM node:22-alpine AS prod

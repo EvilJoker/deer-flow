@@ -1,0 +1,80 @@
+# DeerFlow Development Environment (Local Version)
+# Usage: docker-compose -f docker-compose-dev.yaml up --build
+#
+# Services:
+#   - nginx: Reverse proxy (port 2026)
+#   - frontend: Frontend Next.js dev server (port 3000)
+#   - gateway: Backend Gateway API (port 8001)
+#   - langgraph: LangGraph server (port 2024)
+#
+# Access: http://localhost:2026
+#
+# NOTE: Using host network mode for all services to simplify DooD sandbox connectivity.
+#       All services communicate via localhost.
+
+services:
+  # ── Reverse Proxy ──────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: deer-flow-nginx
+    ports:
+      - "2026:2026"
+    volumes:
+      - ./nginx/${NGINX_CONF:-nginx.local.conf}:/etc/nginx/nginx.conf:ro
+    network_mode: host
+    restart: unless-stopped
+
+  # Frontend - Next.js Production Server (pre-built image)
+  frontend:
+    image: ghcr.io/eviljoker/deer-flow-frontend:latest
+    container_name: deer-flow-frontend
+    command: sh -c "cd /app/frontend && pnpm start"
+    volumes: []
+    environment:
+      - NODE_ENV=production
+      - CI=true
+    env_file:
+      - ../.env
+    network_mode: host
+    restart: unless-stopped
+
+  # Backend - Gateway API (using pre-built image)
+  gateway:
+    image: ghcr.io/eviljoker/deer-flow:latest
+    container_name: deer-flow-gateway
+    command: sh -c "umask 000 && cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001"
+    volumes:
+      - ../config.yaml:/app/config.yaml:ro
+    environment:
+      - CI=true
+      - DEER_FLOW_CHANNELS_LANGGRAPH_URL=http://127.0.0.1:2024
+      - DEER_FLOW_CHANNELS_GATEWAY_URL=http://127.0.0.1:8001
+      - DEER_FLOW_SANDBOX_HOST=127.0.0.1
+    env_file:
+      - ../.env
+    network_mode: host
+    security_opt:
+      - seccomp=unconfined
+    restart: unless-stopped
+
+  # Backend - LangGraph Server (using pre-built image)
+  # Use host network for sandbox connectivity (DooD requires host network)
+  langgraph:
+    image: ghcr.io/eviljoker/deer-flow:latest
+    container_name: deer-flow-langgraph
+    command: sh -c "umask 000 && cd backend && LANGGRAPH_CLI_NO_ANALYTICS=1 uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 2024"
+    volumes:
+      - ../config.yaml:/app/config.yaml:ro
+      - ../.deer-flow:/app/backend/.deer-flow
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CI=true
+      - LANGGRAPH_CLI_NO_ANALYTICS=1
+      - DEER_FLOW_SANDBOX_HOST=127.0.0.1
+      - DEER_FLOW_HOST_BASE_DIR=/media/vdc/github/deer-flow/docker_local/.deer-flow
+    env_file:
+      - ../.env
+    network_mode: host
+    security_opt:
+      - seccomp=unconfined
+    restart: unless-stopped
