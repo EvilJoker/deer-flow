@@ -1,6 +1,6 @@
 # DeerFlow - Unified Development Environment
 
-.PHONY: help config config-upgrade check install dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config config-upgrade check install dev dev-daemon start stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway test-e2e
 
 PYTHON ?= python
 BASH ?= bash
@@ -165,13 +165,20 @@ docker-logs-gateway:
 	@./scripts/docker.sh logs --gateway
 
 # ==========================================
+# E2E Tests
+# ==========================================
+
+test-e2e:
+	@./tests/test_sandbox_e2e.sh
+
+# ==========================================
 # Production Docker Commands
 # ==========================================
 
-# Build and start production services
-up:
-	@./scripts/deploy.sh
+# # Build and start production services
+# up:
+# 	@./scripts/deploy.sh
 
-# Stop and remove production containers
-down:
-	@./scripts/deploy.sh down
+# # Stop and remove production containers
+# down:
+# 	@./scripts/deploy.sh down
