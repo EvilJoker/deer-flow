@@ -1,5 +1,5 @@
 # DeerFlow Development Environment (Local Version)
-# Usage: docker-compose -f docker-compose-dev.yaml up --build
+# Usage: docker compose -f docker-compose-dev.yaml up --build
 #
 # Services:
 #   - nginx: Reverse proxy (port 2026)
@@ -11,6 +11,18 @@
 #
 # NOTE: Using host network mode for all services to simplify DooD sandbox connectivity.
 #       All services communicate via localhost.
+#
+# Data Directory:
+#   DEER_FLOW_DATA_DIR env var must be set before running docker compose.
+#   docker.sh sets it automatically via detect_data_dir():
+#     1. Use DEER_FLOW_DATA_DIR if set
+#     2. Use ~/.deer-flow if it exists
+#     3. Fall back to project directory
+#
+#   To run directly: export DEER_FLOW_DATA_DIR=~/.deer-flow
+#
+#   Note: If DEER_FLOW_DATA_DIR is not set, docker compose will fail.
+#         Always use: make docker-start (not direct docker compose)
 
 services:
   # ── Reverse Proxy ──────────────────────────────────────────────────────
@@ -33,8 +45,9 @@ services:
     environment:
       - NODE_ENV=production
       - CI=true
+      - SKIP_ENV_VALIDATION=1
     env_file:
-      - ../.env
+      - ${DEER_FLOW_DATA_DIR}/.env
     network_mode: host
     restart: unless-stopped
 
@@ -44,14 +57,18 @@ services:
     container_name: deer-flow-gateway
     command: sh -c "umask 000 && cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001"
     volumes:
-      - ../config.yaml:/app/config.yaml:ro
+      - ${DEER_FLOW_DATA_DIR}/config.yaml:/app/backend/config.yaml:ro
+      - ${DEER_FLOW_DATA_DIR}/extensions_config.json:/app/extensions_config.json:ro
+      - ${DEER_FLOW_DATA_DIR}/skills:/app/skills:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - CI=true
+      - DEER_FLOW_HOME=/app/.deer-flow
       - DEER_FLOW_CHANNELS_LANGGRAPH_URL=http://127.0.0.1:2024
       - DEER_FLOW_CHANNELS_GATEWAY_URL=http://127.0.0.1:8001
       - DEER_FLOW_SANDBOX_HOST=127.0.0.1
     env_file:
-      - ../.env
+      - ${DEER_FLOW_DATA_DIR}/.env
     network_mode: host
     security_opt:
       - seccomp=unconfined
@@ -64,16 +81,16 @@ services:
     container_name: deer-flow-langgraph
     command: sh -c "umask 000 && cd backend && LANGGRAPH_CLI_NO_ANALYTICS=1 uv run langgraph dev --no-browser --allow-blocking --host 0.0.0.0 --port 2024"
     volumes:
-      - ../config.yaml:/app/config.yaml:ro
-      - ../.deer-flow:/app/backend/.deer-flow
+      - ${DEER_FLOW_DATA_DIR}:/app/.deer-flow
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - CI=true
       - LANGGRAPH_CLI_NO_ANALYTICS=1
+      - DEER_FLOW_HOME=/app/.deer-flow
+      - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_DATA_DIR}
       - DEER_FLOW_SANDBOX_HOST=127.0.0.1
-      - DEER_FLOW_HOST_BASE_DIR=/media/vdc/github/deer-flow/docker_local/.deer-flow
     env_file:
-      - ../.env
+      - ${DEER_FLOW_DATA_DIR}/.env
     network_mode: host
     security_opt:
       - seccomp=unconfined

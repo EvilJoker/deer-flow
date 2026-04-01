@@ -15,6 +15,22 @@ DOCKER_DIR="$PROJECT_ROOT"
 # Docker Compose command with project name
 COMPOSE_CMD="docker compose -p deer-flow-dev -f docker-compose-dev.yaml"
 
+# Detect data directory
+# Priority: 1. User's DEER_FLOW_DATA_DIR env var, 2. ~/.deer-flow if exists, 3. project directory
+detect_data_dir() {
+    if [ -n "$DEER_FLOW_DATA_DIR" ]; then
+        echo "$DEER_FLOW_DATA_DIR"
+        return
+    fi
+
+    if [ -d "$HOME/.deer-flow" ]; then
+        echo "$HOME/.deer-flow"
+        return
+    fi
+
+    echo "$PROJECT_ROOT"
+}
+
 detect_sandbox_mode() {
     local config_file="$PROJECT_ROOT/config.yaml"
     local sandbox_use=""
@@ -173,17 +189,17 @@ start() {
     fi
     echo ""
     
-    # Set DEER_FLOW_ROOT for provisioner if not already set
-    if [ -z "$DEER_FLOW_ROOT" ]; then
-        export DEER_FLOW_ROOT="$PROJECT_ROOT"
-        echo -e "${BLUE}Setting DEER_FLOW_ROOT=$DEER_FLOW_ROOT${NC}"
-        echo ""
-    fi
-    
-    # Ensure config.yaml exists before starting.
-    if [ ! -f "$PROJECT_ROOT/config.yaml" ]; then
+    # Set DEER_FLOW_DATA_DIR for data persistence
+    local data_dir
+    data_dir="$(detect_data_dir)"
+    export DEER_FLOW_DATA_DIR="$data_dir"
+    echo -e "${BLUE}Using data directory: $DEER_FLOW_DATA_DIR${NC}"
+    echo ""
+
+    # Ensure config.yaml exists in data directory before starting.
+    if [ ! -f "$DEER_FLOW_DATA_DIR/config.yaml" ]; then
         if [ -f "$PROJECT_ROOT/config.example.yaml" ]; then
-            cp "$PROJECT_ROOT/config.example.yaml" "$PROJECT_ROOT/config.yaml"
+            cp "$PROJECT_ROOT/config.example.yaml" "$DEER_FLOW_DATA_DIR/config.yaml"
             echo ""
             echo -e "${YELLOW}============================================================${NC}"
             echo -e "${YELLOW}  config.yaml has been created from config.example.yaml.${NC}"
@@ -191,24 +207,24 @@ start() {
             echo -e "${YELLOW}  configuration before starting DeerFlow.                  ${NC}"
             echo -e "${YELLOW}============================================================${NC}"
             echo ""
-            echo -e "${YELLOW}  Edit the file:  $PROJECT_ROOT/config.yaml${NC}"
+            echo -e "${YELLOW}  Edit the file:  $DEER_FLOW_DATA_DIR/config.yaml${NC}"
             echo -e "${YELLOW}  Then run:        make docker-start${NC}"
             echo ""
             exit 0
         else
-            echo -e "${YELLOW}✗ config.yaml not found and no config.example.yaml to copy from.${NC}"
+            echo -e "${YELLOW}✗ config.yaml not found in $DEER_FLOW_DATA_DIR and no config.example.yaml to copy from.${NC}"
             exit 1
         fi
     fi
 
     # Ensure extensions_config.json exists as a file before mounting.
     # Docker creates a directory when bind-mounting a non-existent host path.
-    if [ ! -f "$PROJECT_ROOT/extensions_config.json" ]; then
+    if [ ! -f "$DEER_FLOW_DATA_DIR/extensions_config.json" ]; then
         if [ -f "$PROJECT_ROOT/extensions_config.example.json" ]; then
-            cp "$PROJECT_ROOT/extensions_config.example.json" "$PROJECT_ROOT/extensions_config.json"
+            cp "$PROJECT_ROOT/extensions_config.example.json" "$DEER_FLOW_DATA_DIR/extensions_config.json"
             echo -e "${BLUE}Created extensions_config.json from example${NC}"
         else
-            echo "{}" > "$PROJECT_ROOT/extensions_config.json"
+            echo "{}" > "$DEER_FLOW_DATA_DIR/extensions_config.json"
             echo -e "${BLUE}Created empty extensions_config.json${NC}"
         fi
     fi
@@ -231,8 +247,13 @@ start() {
 
 # View Docker development logs
 logs() {
+    # Set DEER_FLOW_DATA_DIR if not already set (needed for compose command)
+    if [ -z "$DEER_FLOW_DATA_DIR" ]; then
+        export DEER_FLOW_DATA_DIR="$(detect_data_dir)"
+    fi
+
     local service=""
-    
+
     case "$1" in
         --frontend)
             service="frontend"
@@ -265,10 +286,9 @@ logs() {
 
 # Stop Docker development environment
 stop() {
-    # DEER_FLOW_ROOT is referenced in docker-compose-dev.yaml; set it before
-    # running compose down to suppress "variable is not set" warnings.
-    if [ -z "$DEER_FLOW_ROOT" ]; then
-        export DEER_FLOW_ROOT="$PROJECT_ROOT"
+    # Set DEER_FLOW_DATA_DIR if not already set
+    if [ -z "$DEER_FLOW_DATA_DIR" ]; then
+        export DEER_FLOW_DATA_DIR="$(detect_data_dir)"
     fi
     echo "Stopping Docker development services..."
     cd "$DOCKER_DIR" && $COMPOSE_CMD down
